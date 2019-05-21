@@ -2,6 +2,8 @@
 
 Simple tool to download image tiles from Google Maps via the Static-Maps API
 
+![preview image](preview.PNG)
+
 ## How it works
 
 * Give the tool two sets of latitudes and longitudes for the north-west and south-east of the area you wish to download
@@ -63,3 +65,5 @@ Just download the latest release from the
     ```
 
 4. It will then download the image tiles, stitch them together, show the image onscreen and save to the local directory
+
+    ![satellite sample](satellite_sample.PNG)
