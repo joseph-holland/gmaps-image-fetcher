@@ -2,18 +2,18 @@ from setuptools import setup, find_packages
 
 setup(
     name="gmaps-image-fetcher",
-    version="0.3.2",
+    version="1.0.0",
     description="Stitch together Google Maps images from lat, long coordinates using the Static Maps API.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    author="Your Name",
-    author_email="your@email.com",
+    author="Joseph Holland",
+    author_email="joseph@josephholland.ie",
     url="https://github.com/joseph-holland/gmaps-image-fetcher",
     packages=find_packages(),
     python_requires=">=3.5",
     install_requires=[
-        "requests>=2.22.0",
-        "Pillow>=6.0.0"
+        "requests",
+        "Pillow"
     ],
     entry_points={
         "console_scripts": [

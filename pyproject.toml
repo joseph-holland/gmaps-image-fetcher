@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gmaps-image-fetcher"
+version = "1.0.0"
+description = "Stitch together Google Maps images from lat, long coordinates using the Static Maps API."
+readme = "README.md"
+authors = [
+    {name = "Joseph Holland", email = "joseph@josephholland.ie"},
+]
+license = {text = "GNU General Public License v3.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.5"
+dependencies = [
+    "requests",
+    "Pillow",
+]
+
+[project.urls]
+Homepage = "https://github.com/joseph-holland/gmaps-image-fetcher"
+"Bug Tracker" = "https://github.com/joseph-holland/gmaps-image-fetcher/issues"
+
+[project.scripts]
+gmaps-image-fetcher = "gmaps_image_fetcher.main:main"

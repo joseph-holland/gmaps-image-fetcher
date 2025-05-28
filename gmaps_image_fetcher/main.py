@@ -7,6 +7,7 @@ from gmaps_image_fetcher import __version__
 import argparse
 import logging
 import sys
+import time
 from io import BytesIO
 from os import environ
 
@@ -31,7 +32,6 @@ MAXSIZE = 600
 LOGO_CUTOFF = 32
 
 logger = None  # Global logger, will be set in main
-
 
 def latlon_to_pixels(lat, lon, zoom):
     mx = lon
@@ -63,7 +63,7 @@ def get_logger(name):
     return logger
 
 
-def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
+def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1, delay=0.5):
     global logger
     try:
         GOOGLE_MAPS_API_KEY = environ['GOOGLE_MAPS_API_KEY']  # set to 'your_API_key'
@@ -83,7 +83,10 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
     lrx, lry = latlon_to_pixels(lrlat, lrlon, zoom)
 
     dx, dy = lrx - ulx, uly - lry  # Calculate total pixel dimensions of final image
-    cols, rows = ceil(dx / (MAXSIZE * scale)), ceil(dy / (MAXSIZE * scale))  # Calculate rows and columns
+    cols, rows = ceil(dx / (MAXSIZE)), ceil(dy / (MAXSIZE))  # Calculate rows and columns independent of scale
+    
+    # Adjust final image dimensions for scale factor
+    final_dx, final_dy = dx * scale, dy * scale
 
     logger.debug("GOOGLE_MAPS_API_KEY: {}".format(GOOGLE_MAPS_API_KEY))
 
@@ -95,10 +98,13 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
         # calculate pixel dimensions of each small image
         width = ceil(dx / cols)
         height = ceil(dy / rows)
-        heightplus = height + LOGO_CUTOFF * scale
+        # Apply scale to requested image sizes
+        request_width = width
+        request_height = height + LOGO_CUTOFF
+        heightplus = request_height
 
-        # assemble the image from stitched
-        final = Image.new('RGB', (int(dx), int(dy)))
+        # assemble the image from stitched with appropriate scale
+        final = Image.new('RGB', (int(final_dx), int(final_dy)))
         for x in range(cols):
             for y in range(rows):
                 dxn = width * (0.5 + x)
@@ -110,7 +116,7 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
                 urlparams = {
                     'center': position,
                     'zoom': str(zoom),
-                    'size': '%dx%d' % (int(width), int(heightplus)),
+                    'size': '%dx%d' % (int(request_width), int(request_height)),
                     'maptype': 'satellite',
                     'sensor': 'false',
                     'scale': scale
@@ -126,9 +132,16 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
                 except requests.exceptions.RequestException as e:
                     print(e)
                     sys.exit(1)
+                
+                # Add delay between API calls to avoid hitting rate limits
+                time.sleep(delay)
 
                 im = Image.open(BytesIO(response.content))
-                final.paste(im, (int(x * width), int(y * height)))
+                # Scale the paste position to account for the scale factor
+                paste_x = int(x * width * scale)
+                paste_y = int(y * height * scale)
+                final.paste(im, (paste_x, paste_y))
+                time.sleep(0.1)  # Be nice to the server, don't flood with requests
 
         return final
 
@@ -143,7 +156,9 @@ def main():
     parser.add_argument('-nw', '--northwest', help='NW Lat/Lon', nargs=2)
     parser.add_argument('-se', '--southeast', help='SE Lat/Lon', nargs=2)
     parser.add_argument('-z', '--zoom', help='Zoom level from 1 (world) to 20+ (buildings), default is 18', nargs=1)
-    parser.add_argument('--scale', help='Scale factor for Google Maps API (1 or 2)', type=int, choices=[1,2], default=1)
+    parser.add_argument('-sc', '--scale', help='Scale factor for Google Maps API (1 or 2)', type=int, choices=[1,2], default=1)
+    parser.add_argument('--delay', help='Delay between API requests in seconds (default: 0.5)', type=float, default=0.5)
+    parser.add_argument('-f', '--format', help='Output image format (png, jpg, bmp)', type=str, choices=['png', 'jpg', 'bmp'], default='png')
     options = parser.parse_args()
 
     # Configure logging
@@ -162,10 +177,31 @@ def main():
 
     # Get satellite image
     result = get_maps_image(
-        nw_lat_long, se_lat_long, zoom=int(options.zoom[0]), scale=options.scale
+        nw_lat_long, se_lat_long, zoom=int(options.zoom[0]), scale=options.scale, delay=options.delay
     )
     result.show()  # Show onscreen
-    result.save("satellite_" + datetime.now().strftime('%Y%m%d_%H%M%S') + ".bmp")  # Save image
+    
+    # Save image in the selected format
+    format_map = {
+        'png': 'PNG',
+        'jpg': 'JPEG',
+        'bmp': 'BMP'
+    }
+    
+    # Create filename with appropriate extension
+    filename = "satellite_" + datetime.now().strftime('%Y%m%d_%H%M%S') + "." + options.format
+    
+    # Set format-specific parameters
+    save_args = {}
+    if options.format == 'png':
+        save_args['compress_level'] = 6
+    elif options.format == 'jpg':
+        save_args['quality'] = 90
+        save_args['optimize'] = True
+    
+    # Save the image
+    result.save(filename, format=format_map[options.format], **save_args)
+    logger.info(f"Satellite image saved as {filename}")
 
 
 if __name__ == "__main__":
