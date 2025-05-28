@@ -30,6 +30,7 @@ import requests
 from PIL import Image
 from math import log, exp, tan, atan, ceil
 from datetime import datetime
+from gmaps_image_fetcher.main import main
 
 __version__ = "0.3.2"
 
@@ -47,6 +48,8 @@ MAXSIZE = 600
 # For cutting off the logos at the bottom of each of the grabbed images.  The
 # logo height in pixels is assumed to be less than this amount.
 LOGO_CUTOFF = 32
+
+logger = None  # Global logger, will be set in main
 
 
 def latlon_to_pixels(lat, lon, zoom):
@@ -67,11 +70,15 @@ def pixels_to_latlon(px, py, zoom):
     return lat, lon
 
 
-def get_maps_image(nw_lat_long, se_lat_long, zoom=18):
+def get_maps_image(nw_lat_long, se_lat_long, zoom=18, scale=1):
+    global logger
     try:
         GOOGLE_MAPS_API_KEY = environ['GOOGLE_MAPS_API_KEY']  # set to 'your_API_key'
     except KeyError as e:
-        logger.error("Please set your GOOGLE_MAPS_API_KEY environment variable")
+        if logger:
+            logger.error("Please set your GOOGLE_MAPS_API_KEY environment variable")
+        else:
+            print("Please set your GOOGLE_MAPS_API_KEY environment variable")
         sys.exit(1)
 
     # Unpack lats/lons
@@ -83,19 +90,19 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18):
     lrx, lry = latlon_to_pixels(lrlat, lrlon, zoom)
 
     dx, dy = lrx - ulx, uly - lry  # Calculate total pixel dimensions of final image
-    cols, rows = ceil(dx / MAXSIZE), ceil(dy / MAXSIZE)  # Calculate rows and columns
+    cols, rows = ceil(dx / (MAXSIZE * scale)), ceil(dy / (MAXSIZE * scale))  # Calculate rows and columns
 
-    logger.debug("GOOGLE_MAPS_API_KEY: ".format(GOOGLE_MAPS_API_KEY))
+    logger.debug("GOOGLE_MAPS_API_KEY: {}".format(GOOGLE_MAPS_API_KEY))
 
     print("Retrieve {} image tiles from Google static-maps API".format(cols * rows))
     user_input = input("Do you want to continue y/n: ")
-    if user_input == 'n':
+    if user_input.lower() == 'n':
         sys.exit(0)
     else:
         # calculate pixel dimensions of each small image
         width = ceil(dx / cols)
         height = ceil(dy / rows)
-        heightplus = height + LOGO_CUTOFF
+        heightplus = height + LOGO_CUTOFF * scale
 
         # assemble the image from stitched
         final = Image.new('RGB', (int(dx), int(dy)))
@@ -104,16 +111,16 @@ def get_maps_image(nw_lat_long, se_lat_long, zoom=18):
                 dxn = width * (0.5 + x)
                 dyn = height * (0.5 + y)
                 latn, lonn = pixels_to_latlon(
-                    ulx + dxn, uly - dyn - LOGO_CUTOFF / 2, zoom)
+                    ulx + dxn, uly - dyn - (LOGO_CUTOFF * scale) / 2, zoom)
                 position = ','.join((str(latn / DEGREE), str(lonn / DEGREE)))
                 logger.info("Getting image tile from column {0} row {1} for position {2}".format(x, y, position))
                 urlparams = {
                     'center': position,
                     'zoom': str(zoom),
-                    'size': '%dx%d' % (width, heightplus),
+                    'size': '%dx%d' % (int(width), int(heightplus)),
                     'maptype': 'satellite',
                     'sensor': 'false',
-                    'scale': 1
+                    'scale': scale
                 }
                 logger.debug("urlparams: {}".format(urlparams))
                 if GOOGLE_MAPS_API_KEY is not None:
@@ -145,7 +152,7 @@ def get_logger(name):
     return logger
 
 
-if __name__ == "__main__":
+def main():
     # Configure command-line options
     parser = argparse.ArgumentParser()
     parser.add_argument('--version', action='version',
@@ -155,13 +162,15 @@ if __name__ == "__main__":
     parser.add_argument('-nw', '--northwest', help='NW Lat/Lon', nargs=2)
     parser.add_argument('-se', '--southeast', help='SE Lat/Lon', nargs=2)
     parser.add_argument('-z', '--zoom', help='Zoom level from 1 (world) to 20+ (buildings), default is 18', nargs=1)
+    parser.add_argument('--scale', help='Scale factor for Google Maps API (1 or 2)', type=int, choices=[1,2], default=1)
     options = parser.parse_args()
 
     # Configure logging
+    global logger
     logger = get_logger(__name__)
     logger.setLevel(logging.INFO)
     if options.logfile:
-        fh = logging.FileHandler(str(options.logfile))
+        fh = logging.FileHandler(str(options.logfile[0]))
         logger.addHandler(fh)
     if options.debug:
         logger.setLevel(logging.DEBUG)
@@ -171,6 +180,12 @@ if __name__ == "__main__":
     se_lat_long = (float(options.southeast[0]) * DEGREE, float(options.southeast[1]) * DEGREE)
 
     # Get satellite image
-    result = get_maps_image(nw_lat_long, se_lat_long, zoom=int(options.zoom[0]))
+    result = get_maps_image(
+        nw_lat_long, se_lat_long, zoom=int(options.zoom[0]), scale=options.scale
+    )
     result.show()  # Show onscreen
     result.save("satellite_" + datetime.now().strftime('%Y%m%d_%H%M%S') + ".bmp")  # Save image
+
+
+if __name__ == "__main__":
+    main()
